@@ -10,7 +10,7 @@
 #SBATCH --output=%x_%j.log
 
 source ~/.bashrc
-conda activate fastclip
+conda activate fast_clip
 
 export PYTHONPATH="$PYTHONPATH:$PWD/src"
 export HUGGINGFACE_HUB_CACHE='./checkpoints/huggingface'
@@ -24,13 +24,15 @@ torchrun \
     --train-num-samples 1000000 --data_size 1400000 \
     --warmup 500 \
     --batch-size 320 \
-    --epochs 10 \
+    --epochs 30 \
     --workers 6 \
     --model ViT-B-16 \
     --name fastclipv3 \
     --seed 2025 \
     --wd 0.2 \
     --local-loss \
-    --fastclip --multiply_tau --temperature_scheme global_learnable \
+    --multiply_tau --temperature_scheme global_learnable \
     --lr 3.125e-4 --lr_tau 7.8125e-5 --lr_tau_scheduler step_thresh --rho 11.0 \
-    --gamma 0.9 --gamma_schedule cosine --gamma_decay_epochs 10
+    --gamma 0.9 --gamma_schedule cosine --gamma_decay_epochs 10 \
+    --distill-model ViT-B-32 \
+    --distill-pretrained '/scratch/group/optmai/anant/Ref_modelling/fast_clip/src/clip_vit_b32_openai.pth'

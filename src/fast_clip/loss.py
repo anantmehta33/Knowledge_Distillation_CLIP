@@ -68,6 +68,10 @@ def gather_features(
     return all_image_features, all_text_features
 
 
+
+
+
+
 class ClipLoss(nn.Module):
 
     def __init__(
@@ -184,8 +188,84 @@ class CoCaLoss(ClipLoss):
 
 class DistillClipLoss(ClipLoss):
 
-    def dist_loss(self, teacher_logits, student_logits):
-        return -(teacher_logits.softmax(dim=1) * student_logits.log_softmax(dim=1)).sum(dim=1).mean(dim=0)
+    def dist_loss(self,
+              teacher_image_features: torch.Tensor,
+              teacher_text_features: torch.Tensor,
+              student_image_features: torch.Tensor,
+              student_text_features: torch.Tensor,
+              confidence_std: torch.Tensor) -> torch.Tensor:
+        """
+        Compute weighted MSE distillation loss between teacher and student CLIP features.
+        Each sample's loss is scaled by its confidence score.
+
+        Args:
+            teacher_image_features: (B, D)
+            teacher_text_features: (B, D)
+            student_image_features: (B, D)
+            student_text_features: (B, D)
+            confidence_std: (B, 1) — standardized confidence scores
+
+        Returns:
+            Scalar loss (weighted MSE)
+        """
+        # MSE loss per sample (not reduced)
+        mse_image = F.mse_loss(student_image_features, teacher_image_features, reduction='none')  # (B, D)
+        mse_text  = F.mse_loss(student_text_features, teacher_text_features, reduction='none')    # (B, D)
+
+        # Mean across embedding dim → per-sample loss (B, 1)
+        loss_image = mse_image.mean(dim=-1, keepdim=True)
+        loss_text  = mse_text.mean(dim=-1, keepdim=True)
+
+        # Combine and weight by confidence
+        loss = 0.5 * (loss_image + loss_text)  # shape: (B, 1)
+        weighted_loss = (loss * confidence_std).mean()  # scalar
+
+        return weighted_loss
+
+    def get_confidence(self, teacher_image_features: torch.Tensor,
+                    teacher_text_features: torch.Tensor,
+                    logit_scale: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
+        """
+        Compute confidence score per sample based on teacher CLIP embeddings.
+        Returns a tensor of shape (batch_size, 1) with standardized scores.
+        """
+        batch_size = teacher_image_features.size(0)
+
+        # Cosine similarities
+        sim_image = teacher_image_features @ teacher_text_features.T  # [B, B]
+        sim_text  = teacher_text_features @ teacher_image_features.T  # [B, B]
+        
+        # Diagonal (positive pairs)
+        diag_sim = torch.sum(teacher_image_features * teacher_text_features, dim=-1, keepdim=True)  # [B, 1]
+
+        # Compute difference to diagonal (positive pair) similarity
+        diff_image = (sim_image - diag_sim) * logit_scale  # [B, B]
+        diff_text  = (sim_text - diag_sim) * logit_scale   # [B, B]
+
+        # Zero out diagonal (we don't compare to positives)
+        mask = 1 - torch.eye(batch_size, device=teacher_image_features.device)
+        diff_image = diff_image * mask
+        diff_text  = diff_text * mask
+
+        # Exponentiate differences
+        exp_diff_image = torch.exp(diff_image)  # [B, B]
+        exp_diff_text  = torch.exp(diff_text)   # [B, B]
+
+        # Sum across negatives
+        loss_image = torch.sum(exp_diff_image, dim=-1, keepdim=True) / (batch_size - 1)
+        loss_text  = torch.sum(exp_diff_text,  dim=-1, keepdim=True) / (batch_size - 1)
+
+        # Average both views
+        confidence_raw = 0.5 * (loss_image + loss_text)  # [B, 1]
+
+        # Standard score normalization
+        confidence_std = (confidence_raw - confidence_raw.mean(dim=0, keepdim=True)) / (
+            confidence_raw.std(dim=0, keepdim=True) + 1e-8
+        )
+
+        return torch.sigmoid(confidence_std)  # shape: (B, 1)
+
+
 
     def forward(
             self,
@@ -205,15 +285,14 @@ class DistillClipLoss(ClipLoss):
 
         labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
 
+        alpha = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
+
         contrastive_loss = (
             F.cross_entropy(logits_per_image, labels) +
             F.cross_entropy(logits_per_text, labels)
         ) / 2
 
-        distill_loss = (
-            self.dist_loss(dist_logits_per_image, logits_per_image) +
-            self.dist_loss(dist_logits_per_text, logits_per_text)
-        ) / 2
+        distill_loss = self.dist_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
 
         if output_dict:
             return {"contrastive_loss": contrastive_loss, "distill_loss": distill_loss}

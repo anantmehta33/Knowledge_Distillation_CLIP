@@ -5,6 +5,8 @@ features/
 results/
 checkpoints/
 logs/
+datasets/
+src/clip_vit_b32_openai.pth
 
 tests/data/
 *.pt
