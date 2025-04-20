@@ -266,7 +266,6 @@ class DistillClipLoss(ClipLoss):
         return torch.sigmoid(confidence_std)  # shape: (B, 1)
 
 
-
     def forward(
             self,
             image_features,
@@ -287,10 +286,11 @@ class DistillClipLoss(ClipLoss):
 
         alpha = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
 
-        contrastive_loss = (
-            F.cross_entropy(logits_per_image, labels) +
-            F.cross_entropy(logits_per_text, labels)
-        ) / 2
+        # contrastive_loss = (
+        #     F.cross_entropy(logits_per_image, labels) +
+        #     F.cross_entropy(logits_per_text, labels)
+        # ) / 2
+        contrastive_loss = torch.tensor([0.0], device='cuda')
 
         distill_loss = self.dist_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
 

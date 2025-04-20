@@ -372,7 +372,11 @@ def main(args):
 
         scaler = GradScaler() if args.precision == "amp" else None
 
-    loss = create_loss(args)
+    if args.distill:
+        loss, distill_loss = create_loss(args)
+    else:
+        loss = create_loss(args)
+        distill_loss = None
 
     # optionally resume from a checkpoint
     start_epoch = 0
@@ -523,7 +527,7 @@ def main(args):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
 
-        train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
+        train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, scheduler, dist_model, args,
                         tb_writer=writer, profiler=prof)
         completed_epoch = epoch + 1
 

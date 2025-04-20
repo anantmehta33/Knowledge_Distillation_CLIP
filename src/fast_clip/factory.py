@@ -267,7 +267,7 @@ def create_model(
 
 def create_loss(args):
     if args.distill:
-        return DistillClipLoss(
+        distill_loss = DistillClipLoss(
             local_loss=args.local_loss,
             gather_with_grad=args.gather_with_grad,
             cache_labels=True,
@@ -275,6 +275,21 @@ def create_loss(args):
             world_size=args.world_size,
             use_horovod=args.horovod,
         )
+
+        loss_args = {"data_size": args.data_size, "gamma": args.gamma, "device": torch.device(args.device),
+                        "rho": args.rho, "gamma_schedule": args.gamma_schedule,
+                        "gamma_decay_epochs": args.gamma_decay_epochs, "eps": args.fastclip_eps,
+                        "multiply_tau": args.multiply_tau}
+        if "global" in args.temperature_scheme:
+            fastclip_loss = FastCLIPLoss(**loss_args)
+        elif "individual" in args.temperature_scheme:
+            loss_args.update({"tau_init": args.temperature, "lr_tau": args.lr_tau, "beta1_tau": args.beta1,
+                              "beta2_tau": args.beta2, "eps_tau": args.eps})
+            fastclip_iloss = FastCLIPLossIndividual(**loss_args)
+        else:
+            raise NotImplementedError
+        # return 2 loss objects
+        return fastclip_loss, distill_loss
     elif "coca" in args.model.lower():
         return CoCaLoss(
             caption_loss_weight=args.coca_caption_loss_weight,

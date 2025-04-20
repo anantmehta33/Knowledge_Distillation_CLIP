@@ -61,7 +61,7 @@ def backward(total_loss, scaler):
         total_loss.backward()
 
 
-def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args, tb_writer=None, profiler=None):
+def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, scheduler, dist_model, args, tb_writer=None, profiler=None):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision)
     input_dtype = get_input_dtype(args.precision)
@@ -110,10 +110,14 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             with autocast():
                 model_out = model(images, texts)
                 logit_scale = model_out["logit_scale"]
+                
+                # make a separate (shallow) copy for distillation loss args
+                distill_args = model_out.copy()
+
                 if args.distill:
                     with torch.no_grad():
                         dist_model_out = dist_model(images, texts)
-                    model_out.update({f'dist_{k}': v for k, v in dist_model_out.items()})
+                    distill_args.update({f'dist_{k}': v for k, v in dist_model_out.items()})
                 if args.fastclip:
                     features = [model_out["image_features"], model_out["text_features"]]
                     remote_features = all_gather_tuple_tensor(features, None)
@@ -139,8 +143,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     model_out.update(
                         {"offset": offset, "loss1": (loss1_im, loss1_tt), "u": u, "sim": sim})
                 losses = loss(**model_out, output_dict=True)
+                # calling the distillation loss forward function
+                dist_losses = distill_loss(**distill_args, output_dict=True)
 
-                total_loss = sum(losses.values())
+                total_loss = sum(losses.values()) + sum(dist_losses.values())
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
