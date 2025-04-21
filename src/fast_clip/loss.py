@@ -339,16 +339,24 @@ class DistillClipLoss(ClipLoss):
             output_dict=False,
     ):
 
-        lamda = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
+
+        if self.world_size > 1:
+            image_features, text_features = gather_features(image_features, text_features, self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
+            dist_image_features, dist_text_features = gather_features(dist_image_features, dist_text_features, self.local_loss, self.gather_with_grad, self.rank, self.world_size, self.use_horovod)
+            lamda = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
+        else:
+            lamda = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
+
 
         if loss_type == 'KD_MSE':
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            scaling_factor = 2000
             if dist_coeff == 'const':
-                alpha = torch.full_like(lamda, 2000)
+                alpha = torch.full_like(lamda, scaling_factor)
             else:
-                alpha = lamda
+                alpha = scaling_factor * lamda
             distill_loss = self.mse_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
 
 
@@ -356,10 +364,11 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            scaling_factor = 2000
             if dist_coeff == 'const':
-                alpha = torch.full_like(lamda, 2000)
+                alpha = torch.full_like(lamda, scaling_factor)
             else:
-                alpha = lamda
+                alpha = scaling_factor * lamda
             distill_loss = self.kl_loss(dist_logits_per_image, dist_logits_per_text, logits_per_image, logits_per_text, alpha)
 
         if loss_type == 'KD_ICL':
@@ -367,13 +376,88 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             logits_per_s_image_to_t_text, _ = self.get_logits(image_features, dist_text_features, logit_scale)
             _, logits_per_s_text_to_t_image = self.get_logits(dist_image_features, text_features, logit_scale)
+            scaling_factor = 1
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0]) 
             if dist_coeff == 'const':
-                alpha = torch.full_like(lamda, 1)
+                alpha = torch.full_like(lamda, scaling_factor)
             else:
-                alpha = lamda
+                alpha = scaling_factor * lamda
             distill_loss = self.icl_loss(logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, alpha, labels)
+        
+        if loss_type == 'KD_MSE_KL':
+            # MSE
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            scaling_factor_mse = 2000
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_mse)
+            else:
+                alpha = scaling_factor_mse * lamda
+            distill_loss_mse = self.mse_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
+            # KL
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            scaling_factor_kl = 2000
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_kl)
+            else:
+                alpha = scaling_factor_kl * lamda
+            distill_loss_kl = self.kl_loss(dist_logits_per_image, dist_logits_per_text, logits_per_image, logits_per_text, alpha)
 
+            distill_loss = distill_loss_mse + distill_loss_kl
+
+        if loss_type == 'KD_MSE_ICL':
+            # MSE
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            scaling_factor_mse = 2000
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_mse)
+            else:
+                alpha = scaling_factor_mse * lamda
+            distill_loss_mse = self.mse_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
+            # ICL
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            logits_per_s_image_to_t_text, _ = self.get_logits(image_features, dist_text_features, logit_scale)
+            _, logits_per_s_text_to_t_image = self.get_logits(dist_image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0]) 
+            scaling_factor_icl = 1
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_icl)
+            else:
+                alpha = scaling_factor_icl * lamda
+            distill_loss_icl = self.icl_loss(logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, alpha, labels)
+
+            distill_loss = distill_loss_mse + distill_loss_icl
+
+        if loss_type == 'KD_KL_ICL':
+            # KL
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            scaling_factor_kl = 2000
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_kl)
+            else:
+                alpha = scaling_factor_kl * lamda
+            distill_loss_kl = self.kl_loss(dist_logits_per_image, dist_logits_per_text, logits_per_image, logits_per_text, alpha)    
+            # ICL
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            logits_per_s_image_to_t_text, _ = self.get_logits(image_features, dist_text_features, logit_scale)
+            _, logits_per_s_text_to_t_image = self.get_logits(dist_image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0]) 
+            scaling_factor_icl = 1
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, scaling_factor_icl)
+            else:
+                alpha = scaling_factor_icl * lamda
+            distill_loss_icl = self.icl_loss(logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, alpha, labels)
+
+            distill_loss = distill_loss_kl + distill_loss_icl
+                  
 
         #NOTE : Since we only use SogCLR by FastCLIP to approximate the contrastive loss, we pass the CL value as 0. Feel free to modify.
         # contrastive_loss = (

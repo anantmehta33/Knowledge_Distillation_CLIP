@@ -15,6 +15,9 @@ conda activate fast_clip
 export PYTHONPATH="$PYTHONPATH:$PWD/src"
 export HUGGINGFACE_HUB_CACHE='./checkpoints/huggingface'
 
+loss_type=KD_MSE
+dist_coeff=const 
+
 torchrun \
     --nproc_per_node=2 --nnodes=1 --node_rank=0 \
     --rdzv-id=4204 --rdzv-backend=c10d --rdzv-endpoint='127.0.0.1' \
@@ -27,7 +30,7 @@ torchrun \
     --epochs 30 \
     --workers 6 \
     --model ViT-B-16 \
-    --name KDMSE-try \
+    --name ${loss_type}_${dist_coeff}_fastclip\
     --seed 2025 \
     --wd 0.2 \
     --local-loss \
@@ -36,6 +39,6 @@ torchrun \
     --gamma 0.9 --gamma_schedule cosine --gamma_decay_epochs 10 \
     --distill-model ViT-B-32 \
     --distill-pretrained '/scratch/group/optmai/anant/Ref_modelling/fast_clip/src/clip_vit_b32_openai.pth' \
-    --loss_type KD_MSE \
-    --dist_coeff const \
+    --loss_type ${loss_type} \
+    --dist_coeff ${dist_coeff} \
     --get_confidences yes

@@ -153,5 +153,11 @@ src/misc
 src/debug
 core.*
 
+# alphas
+*.pkl
+
+# png
+*.png
+
 # Allow
 !src/evaluation/misc/results_dbs/*

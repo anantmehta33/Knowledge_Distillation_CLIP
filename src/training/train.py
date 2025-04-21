@@ -153,6 +153,7 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
                 confidences_teacher.append(alphas.cpu().numpy().tolist()) 
 
                 total_loss = sum(losses.values()) + sum(dist_losses.values())
+                losses["distill_loss"] = dist_losses["distill_loss"] # Logging distill loss values
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
@@ -297,8 +298,8 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
         if profiler is not None:
             profiler.step()
     if args.get_confidences == 'yes':
-        if epoch == 1:
-            with open('alphas_epoch1.pkl', 'wb') as f:
+        if epoch == 0:
+            with open('alphas_epoch0.pkl', 'wb') as f:
                 pickle.dump(confidences_teacher, f)
     # end for
 
