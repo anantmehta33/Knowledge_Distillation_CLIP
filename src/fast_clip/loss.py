@@ -188,7 +188,7 @@ class CoCaLoss(ClipLoss):
 
 class DistillClipLoss(ClipLoss):
 
-    def dist_loss(self,
+    def mse_loss(self,
               teacher_image_features: torch.Tensor,
               teacher_text_features: torch.Tensor,
               student_image_features: torch.Tensor,
@@ -213,8 +213,8 @@ class DistillClipLoss(ClipLoss):
         mse_text  = F.mse_loss(student_text_features, teacher_text_features, reduction='none')    # (B, D)
 
         # Mean across embedding dim → per-sample loss (B, 1)
-        loss_image = mse_image.mean(dim=-1, keepdim=True)
-        loss_text  = mse_text.mean(dim=-1, keepdim=True)
+        loss_image = mse_image.sum(dim=-1, keepdim=True)
+        loss_text  = mse_text.sum(dim=-1, keepdim=True)
 
         # Combine and weight by confidence
         loss = 0.5 * (loss_image + loss_text)  # shape: (B, 1)
@@ -265,6 +265,66 @@ class DistillClipLoss(ClipLoss):
 
         return torch.sigmoid(confidence_std)  # shape: (B, 1)
 
+    def kl_loss(self,
+                teacher_img_to_txt_logits: torch.Tensor,
+                teacher_txt_to_img_logits: torch.Tensor,
+                student_img_to_txt_logits: torch.Tensor,
+                student_txt_to_img_logits: torch.Tensor,
+                alpha: torch.Tensor) -> torch.Tensor:
+
+        # Convert teacher logits to probability distributions
+        probs_img_to_txt = F.softmax(teacher_img_to_txt_logits, dim=-1)
+        probs_txt_to_img = F.softmax(teacher_txt_to_img_logits, dim=-1)
+
+        # Convert student logits to log-probabilities
+        logprobs_img_to_txt = F.log_softmax(student_img_to_txt_logits, dim=-1)
+        logprobs_txt_to_img = F.log_softmax(student_txt_to_img_logits, dim=-1)
+
+        # KL divergence per sample
+        kl_img_to_txt = F.kl_div(logprobs_img_to_txt, probs_img_to_txt, reduction='none').sum(dim=-1)
+        kl_txt_to_img = F.kl_div(logprobs_txt_to_img, probs_txt_to_img, reduction='none').sum(dim=-1)
+
+        # Combine and apply alpha
+        loss_vector = 0.5 * (kl_img_to_txt + kl_txt_to_img)
+        weighted_loss = (alpha * loss_vector).mean()
+
+        return weighted_loss
+
+
+
+
+    def icl_loss(self,
+                logits_per_s_image_to_t_text: torch.Tensor,
+                logits_per_s_text_to_t_image: torch.Tensor,
+                alpha: torch.Tensor,
+                labels: torch.Tensor) -> torch.Tensor:
+        """
+        Intermodal Contrastive Learning (ICL) Loss between:
+        - Student image encoder ↔ Teacher text encoder
+        - Student text encoder ↔ Teacher image encoder
+
+        Args:
+            logits_per_s_image_to_t_text: [B, B] logits from student image ↔ teacher text
+            logits_per_s_text_to_t_image: [B, B] logits from student text ↔ teacher image
+            alpha: [B] per-sample confidence weights
+            labels: [B] ground truth indices (usually torch.arange(B))
+
+        Returns:
+            Weighted mean ICL loss (scalar)
+        """
+        # Cross-entropy loss per sample, no reduction
+        loss_img_to_text = F.cross_entropy(logits_per_s_image_to_t_text, labels, reduction='none')  # [B]
+        loss_text_to_img = F.cross_entropy(logits_per_s_text_to_t_image, labels, reduction='none')  # [B]
+
+        # Average both directions
+        loss_vector = 0.5 * (loss_img_to_text + loss_text_to_img)  # [B]
+
+        # Apply alpha weighting and average
+        weighted_loss = (alpha * loss_vector).mean()
+
+        return weighted_loss
+
+
 
     def forward(
             self,
@@ -274,29 +334,58 @@ class DistillClipLoss(ClipLoss):
             dist_image_features,
             dist_text_features,
             dist_logit_scale,
+            loss_type,
+            dist_coeff,
             output_dict=False,
     ):
-        logits_per_image, logits_per_text = \
-            self.get_logits(image_features, text_features, logit_scale)
 
-        dist_logits_per_image, dist_logits_per_text = \
-            self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+        lamda = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
 
-        labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+        if loss_type == 'KD_MSE':
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, 2000)
+            else:
+                alpha = lamda
+            distill_loss = self.mse_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
 
-        alpha = self.get_confidence(dist_image_features, dist_text_features, dist_logit_scale)
 
+        if loss_type == 'KD_KL':
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, 2000)
+            else:
+                alpha = lamda
+            distill_loss = self.kl_loss(dist_logits_per_image, dist_logits_per_text, logits_per_image, logits_per_text, alpha)
+
+        if loss_type == 'KD_ICL':
+            # for label matching in ICL
+            logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
+            logits_per_s_image_to_t_text, _ = self.get_logits(image_features, dist_text_features, logit_scale)
+            _, logits_per_s_text_to_t_image = self.get_logits(dist_image_features, text_features, logit_scale)
+            labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0]) 
+            if dist_coeff == 'const':
+                alpha = torch.full_like(lamda, 1)
+            else:
+                alpha = lamda
+            distill_loss = self.icl_loss(logits_per_s_image_to_t_text, logits_per_s_text_to_t_image, alpha, labels)
+
+
+        #NOTE : Since we only use SogCLR by FastCLIP to approximate the contrastive loss, we pass the CL value as 0. Feel free to modify.
         # contrastive_loss = (
         #     F.cross_entropy(logits_per_image, labels) +
         #     F.cross_entropy(logits_per_text, labels)
         # ) / 2
         contrastive_loss = torch.tensor([0.0], device='cuda')
 
-        distill_loss = self.dist_loss(dist_image_features, dist_text_features, image_features, text_features, alpha)
-
         if output_dict:
-            return {"contrastive_loss": contrastive_loss, "distill_loss": distill_loss}
+            return {"contrastive_loss": contrastive_loss, "distill_loss": distill_loss}, lamda
 
+        #NOTE one can use the contrastive loss if needed -- we only use the fast_clip loss
         return contrastive_loss, distill_loss
 
 

@@ -469,6 +469,11 @@ def parse_args(args):
     parser.add_argument("--temperature", type=float, default=0.07, help="Initial temperature value.")
     parser.add_argument("--data_size", type=int, default=-1, help="Original dataset size.")
 
+    # Distill loss
+    parser.add_argument("--loss_type", type=str, default="KD_MSE")
+    parser.add_argument("--dist_coeff", type=str, default="const")
+    parser.add_argument("--get_confidences", type=str, default="no")
+
     args = parser.parse_args(args)
 
     # If some params are not passed, we use the default values based on model name.

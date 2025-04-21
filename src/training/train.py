@@ -3,7 +3,7 @@ import logging
 import math
 import os
 import time
-
+import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -88,6 +88,7 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
     batch_time_m = AverageMeter()
     data_time_m = AverageMeter()
     end = time.time()
+    confidences_teacher = []
     for i, batch in enumerate(dataloader):
         i_accum = i // args.accum_freq
         step = num_batches_per_epoch * epoch + i_accum
@@ -106,6 +107,7 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
         data_time_m.update(time.time() - end)
         optimizer.zero_grad()
 
+        
         if args.accum_freq == 1:
             with autocast():
                 model_out = model(images, texts)
@@ -118,6 +120,8 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
                     with torch.no_grad():
                         dist_model_out = dist_model(images, texts)
                     distill_args.update({f'dist_{k}': v for k, v in dist_model_out.items()})
+                    distill_args.update({'loss_type': args.loss_type, 'dist_coeff': args.dist_coeff}) # new updations
+
                 if args.fastclip:
                     features = [model_out["image_features"], model_out["text_features"]]
                     remote_features = all_gather_tuple_tensor(features, None)
@@ -142,14 +146,17 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
                         {"features": features, "remote_features": remote_features, "remote_u": remote_u})
                     model_out.update(
                         {"offset": offset, "loss1": (loss1_im, loss1_tt), "u": u, "sim": sim})
+
                 losses = loss(**model_out, output_dict=True)
                 # calling the distillation loss forward function
-                dist_losses = distill_loss(**distill_args, output_dict=True)
+                dist_losses, alphas = distill_loss(**distill_args, output_dict=True)
+                confidences_teacher.append(alphas.cpu().numpy().tolist()) 
 
                 total_loss = sum(losses.values()) + sum(dist_losses.values())
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
+         
         else:
             # First, cache the features without any gradient tracking.
             with torch.no_grad():
@@ -289,6 +296,10 @@ def train_one_epoch(model, data, loss, distill_loss, epoch, optimizer, scaler, s
 
         if profiler is not None:
             profiler.step()
+    if args.get_confidences == 'yes':
+        if epoch == 1:
+            with open('alphas_epoch1.pkl', 'wb') as f:
+                pickle.dump(confidences_teacher, f)
     # end for
 
 
