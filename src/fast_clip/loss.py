@@ -222,6 +222,7 @@ class DistillClipLoss(ClipLoss):
 
         return weighted_loss
 
+
     def get_confidence(self, teacher_image_features: torch.Tensor,
                     teacher_text_features: torch.Tensor,
                     logit_scale: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
@@ -235,35 +236,21 @@ class DistillClipLoss(ClipLoss):
         sim_image = teacher_image_features @ teacher_text_features.T  # [B, B]
         sim_text  = teacher_text_features @ teacher_image_features.T  # [B, B]
         
-        # Diagonal (positive pairs)
-        diag_sim = torch.sum(teacher_image_features * teacher_text_features, dim=-1, keepdim=True)  # [B, 1]
+        sim_image_scaled = sim_image * logit_scale
+        sim_text_scaled = sim_text * logit_scale
 
-        # Compute difference to diagonal (positive pair) similarity
-        diff_image = (sim_image - diag_sim) * logit_scale  # [B, B]
-        diff_text  = (sim_text - diag_sim) * logit_scale   # [B, B]
+        # Step 3: softmax along rows (distribution over all texts for each image)
+        prob_image = torch.softmax(sim_image_scaled, dim=-1)  # [B, B]
+        prob_text  = torch.softmax(sim_text_scaled, dim=-1)   # [B, B]
 
-        # Zero out diagonal (we don't compare to positives)
-        mask = 1 - torch.eye(batch_size, device=teacher_image_features.device)
-        diff_image = diff_image * mask
-        diff_text  = diff_text * mask
+        # Step 4: extract diagonal: p(match i <-> i)
+        conf_image = torch.diag(prob_image).unsqueeze(-1)  # [B, 1]
+        conf_text  = torch.diag(prob_text).unsqueeze(-1)   # [B, 1]
 
-        # Exponentiate differences
-        exp_diff_image = torch.exp(diff_image)  # [B, B]
-        exp_diff_text  = torch.exp(diff_text)   # [B, B]
-
-        # Sum across negatives
-        loss_image = torch.sum(exp_diff_image, dim=-1, keepdim=True) / (batch_size - 1)
-        loss_text  = torch.sum(exp_diff_text,  dim=-1, keepdim=True) / (batch_size - 1)
-
-        # Average both views
-        confidence_raw = 0.5 * (loss_image + loss_text)  # [B, 1]
-
-        # Standard score normalization
-        confidence_std = (confidence_raw - confidence_raw.mean(dim=0, keepdim=True)) / (
-            confidence_raw.std(dim=0, keepdim=True) + 1e-8
-        )
-
-        return torch.sigmoid(confidence_std)  # shape: (B, 1)
+        # Step 5: average both views
+        confidence = 0.5 * (conf_image + conf_text)  # [B, 1]
+        
+        return confidence
 
     def kl_loss(self,
                 teacher_img_to_txt_logits: torch.Tensor,
