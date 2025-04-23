@@ -16,7 +16,7 @@ export PYTHONPATH="$PYTHONPATH:$PWD/src"
 export HUGGINGFACE_HUB_CACHE='./checkpoints/huggingface'
 
 loss_type=KD_MSE
-dist_coeff=const 
+dist_coeff=const
 
 torchrun \
     --nproc_per_node=2 --nnodes=1 --node_rank=0 \
@@ -30,7 +30,7 @@ torchrun \
     --epochs 30 \
     --workers 6 \
     --model ViT-B-16 \
-    --name ${loss_type}_${dist_coeff}_fastclip\
+    --name ${loss_type}_${dist_coeff}_fastclip \
     --seed 2025 \
     --wd 0.2 \
     --local-loss \
@@ -41,4 +41,5 @@ torchrun \
     --distill-pretrained '/scratch/group/optmai/anant/Ref_modelling/fast_clip/src/clip_vit_b32_openai.pth' \
     --loss_type ${loss_type} \
     --dist_coeff ${dist_coeff} \
-    --get_confidences yes
+    --get_confidences yes \
+    --gather-with-grad

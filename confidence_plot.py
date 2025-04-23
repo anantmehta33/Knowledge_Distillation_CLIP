@@ -21,7 +21,7 @@ def main():
     plt.ylabel("Frequency")
     plt.grid(True)
 
-    plt.savefig("confidence_distribution.png", dpi=300, bbox_inches='tight')  # Save as high-res PNG
+    plt.savefig("confidence_distribution_teacher.png", dpi=300, bbox_inches='tight')  # Save as high-res PNG
     plt.close()  # Close the figure to avoid display in notebooks or scripts
 
 if __name__ == "__main__":
