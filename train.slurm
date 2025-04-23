@@ -15,8 +15,8 @@ conda activate fast_clip
 export PYTHONPATH="$PYTHONPATH:$PWD/src"
 export HUGGINGFACE_HUB_CACHE='./checkpoints/huggingface'
 
-loss_type=KD_MSE
-dist_coeff=const
+loss_type=KD_MSE_KL
+dist_coeff=var_shifted
 
 torchrun \
     --nproc_per_node=2 --nnodes=1 --node_rank=0 \

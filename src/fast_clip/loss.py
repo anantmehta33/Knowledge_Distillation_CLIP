@@ -268,11 +268,11 @@ class DistillClipLoss(ClipLoss):
         logprobs_txt_to_img = F.log_softmax(student_txt_to_img_logits, dim=-1)
 
         # KL divergence per sample
-        kl_img_to_txt = F.kl_div(logprobs_img_to_txt, probs_img_to_txt, reduction='none').sum(dim=-1)
-        kl_txt_to_img = F.kl_div(logprobs_txt_to_img, probs_txt_to_img, reduction='none').sum(dim=-1)
+        kl_img = F.kl_div(logprobs_img_to_txt, probs_img_to_txt, reduction='none').sum(dim=-1)
+        kl_txt = F.kl_div(logprobs_txt_to_img, probs_txt_to_img, reduction='none').sum(dim=-1)
 
         # Combine and apply alpha
-        loss_vector = 0.5 * (kl_img_to_txt + kl_txt_to_img)
+        loss_vector = 0.5 * (kl_img + kl_txt)
         weighted_loss = (alpha * loss_vector).mean()
 
         return weighted_loss
@@ -350,7 +350,7 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
-            scaling_factor = 2000
+            scaling_factor = 1
             if dist_coeff == 'const':
                 alpha = torch.full_like(lamda, scaling_factor)
             else:
@@ -385,7 +385,7 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
-            scaling_factor_kl = 2000
+            scaling_factor_kl = 1
             if dist_coeff == 'const':
                 alpha = torch.full_like(lamda, scaling_factor_kl)
             else:
@@ -424,7 +424,7 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
-            scaling_factor_kl = 2000
+            scaling_factor_kl = 1
             if dist_coeff == 'const':
                 alpha = torch.full_like(lamda, scaling_factor_kl)
             else:
@@ -471,7 +471,7 @@ class DistillClipLoss(ClipLoss):
             logits_per_image, logits_per_text = self.get_logits(image_features, text_features, logit_scale)
             dist_logits_per_image, dist_logits_per_text = self.get_logits(dist_image_features, dist_text_features, dist_logit_scale)
             labels = self.get_ground_truth(image_features.device, logits_per_image.shape[0])
-            scaling_factor_kl = 2000
+            scaling_factor_kl = 1
             if dist_coeff == 'const':
                 alpha = torch.full_like(lamda, scaling_factor_kl)
             else:
