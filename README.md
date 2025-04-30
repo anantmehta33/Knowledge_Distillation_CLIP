@@ -1,4 +1,4 @@
-## Uncertainty-Guided Distillation
+## Uncertainty-Aware Knowledge Distillation
 
 In this project, we show how to train a CLIP model by using Global Contrastive Loss (GCL) on a 1M subset of the image-text dataset [DFN-2B](https://huggingface.co/datasets/apf1/datafilteringnetworks_2b), using confidence aware knowledge distillation.
 
