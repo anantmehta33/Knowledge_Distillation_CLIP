@@ -213,7 +213,7 @@ class DistillClipLoss(ClipLoss):
         mse_text  = F.mse_loss(student_text_features, teacher_text_features, reduction='none')    # (B, D)
 
         # Mean across embedding dim → per-sample loss (B, 1)
-        loss_image = mse_image.sum(dim=-1, keepdim=True)
+        loss_image = mse_image.sum(dim=-1, keepdim=True) #NOTE: Some implementations use mean instead of sum
         loss_text  = mse_text.sum(dim=-1, keepdim=True)
 
         # Combine and weight by confidence
