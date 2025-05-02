@@ -19,8 +19,9 @@ where, L₍dist₎⁽ⁱ⁾ = (αᵢ + 1) · λ₁ · L₍FD₎⁽ⁱ⁾ + (α�
 
 ### Confidence variance
 
-![image](https://github.com/user-attachments/assets/394f4bd4-9ae1-46b3-ab15-44ae08cb65a3)
-
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/394f4bd4-9ae1-46b3-ab15-44ae08cb65a3" alt="image" />
+</p>
 
 ### Environment
 
