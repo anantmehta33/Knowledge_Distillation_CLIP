@@ -10,6 +10,11 @@ Let:
 - `λ`: Tunable scaling factor for each loss component
 - `L_dist⁽ⁱ⁾`: Distillation loss for sample *i* — either an individual loss or a combination of multiple components
 
+where, L_dist^(i) = (αᵢ + 1) · λ₁· L_FD^(i)
+           + (αᵢ + 1) · λ₂ · L_KL^(i)
+           + (αᵢ + 1) · λ₃ · L_ICL^(i)
+
+![image](https://github.com/user-attachments/assets/7b066619-acb6-4faf-8a0c-cc7f350d6d73)
 
 ### Environment
 
