@@ -17,7 +17,15 @@ where, L₍dist₎⁽ⁱ⁾ = (αᵢ + 1) · λ₁ · L₍FD₎⁽ⁱ⁾ + (α�
 </p>
 
 
-### Confidence variance
+### Confidence and its variance:
+
+`αᵢ`: Confidence score for each sample, derived from the teacher model is calculated as below.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7bffc8ee-9f1a-46cb-9374-03f503ae1f6e" alt="image" />
+</p>
+
+The variance of `αᵢ` across the full 1M samples is shown below.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/394f4bd4-9ae1-46b3-ab15-44ae08cb65a3" alt="image" />
