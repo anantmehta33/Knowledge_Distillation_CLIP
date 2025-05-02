@@ -2,6 +2,14 @@
 
 In this project, we show how to train a CLIP model by using Global Contrastive Loss (GCL) on a 1M subset of the image-text dataset [DFN-2B](https://huggingface.co/datasets/apf1/datafilteringnetworks_2b), using confidence aware knowledge distillation.
 
+We propose **three types of Uncertainty-Aware Distillation Losses**, modulated by a dynamic confidence score.
+
+Let:
+
+- **\(\alpha_i\)**: Confidence score for each sample \(i\), derived from the teacher model (range: 0 to 1),
+- **\(\lambda\)**: Tunable scaling factor for each loss component,
+- **\(\mathcal{L}_{\text{dist}}^{(i)}\)**: Distillation loss for sample \(i\) — either an individual loss or a combination of multiple components.
+
 ### Environment
 
 Setting up a new virtual environment with Conda:
