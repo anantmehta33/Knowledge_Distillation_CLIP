@@ -6,9 +6,10 @@ We propose **three types of Uncertainty-Aware Distillation Losses**, modulated b
 
 Let:
 
-- **\(\alpha_i\)**: Confidence score for each sample \(i\), derived from the teacher model (range: 0 to 1),
-- **\(\lambda\)**: Tunable scaling factor for each loss component,
-- **\(\mathcal{L}_{\text{dist}}^{(i)}\)**: Distillation loss for sample \(i\) — either an individual loss or a combination of multiple components.
+- `αᵢ`: Confidence score for each sample *i*, derived from the teacher model (range: 0 to 1)
+- `λ`: Tunable scaling factor for each loss component
+- `L_dist⁽ⁱ⁾`: Distillation loss for sample *i* — either an individual loss or a combination of multiple components
+
 
 ### Environment
 
